@@ -1,22 +1,11 @@
-
-
-
-
-import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.DataFrame
 
-
-object Producer {
+object Producer extends SparkSessionTrait {
 
   def main(args: Array[String]): Unit = {
-    val inputFile = "src/dataset/train.csv"
-    val linesPerSegment = 10000
-    val outputPath = "outputs"
 
-    val spark = SparkSession.builder()
-      .appName("Spark File Splitter")
-      .master("local[*]")
-      .getOrCreate()
+    SparkSessionTrait("Producer")
 
     try {
       val inputDF = spark.read.option("header", true).csv(inputFile)
