@@ -18,12 +18,12 @@ object FileReconstitution {
 
     val segment_dir = "outputs"
 
-    // Define a method to extract the numerical part of the segment filenames
+
     def extractSegmentNumber(filename: String): Int = {
       val SegmentPattern = """segment_(\d+)""".r
       filename match {
         case SegmentPattern(number) => number.toInt
-        case _ => Int.MaxValue // In case the filename does not match the pattern
+        case _ => Int.MaxValue
       }
     }
 
