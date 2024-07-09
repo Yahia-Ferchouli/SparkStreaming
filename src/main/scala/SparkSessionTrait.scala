@@ -6,7 +6,7 @@ trait SparkSessionTrait {
   def createSparkConf: SparkConf = new SparkConf()
 
   lazy val inputFile = "src/dataset/train.csv"
-  lazy val linesPerSegment = 10000
+  lazy val linesPerSegment = 1000
   lazy val outputPath = "outputs"
 
   lazy val spark: SparkSession = {
