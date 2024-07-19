@@ -43,7 +43,7 @@ object Producer extends SparkSessionTrait {
       val cleanedSegmentDF = segmentDF.drop("_c0")
 
       // Write the segment to a CSV file with a delay of 5 seconds
-      Thread.sleep(2000)  // Delay for 5 seconds
+      Thread.sleep(2000)
       cleanedSegmentDF.write.mode("overwrite").option("header", true).csv(s"$outputPath/segment_$segmentIndex")
 
       // Return the DataFrame of the segment
