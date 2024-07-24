@@ -52,7 +52,7 @@ object Consumer extends SparkSessionTrait {
         .csv(inputDir + "/*")
 
       // Perform processing to get both KPIs
-      val (genderCountDF, satisfactionByClassDF, typeTravelCountDF, ageDistDF, loyalCustomerCountByAgeDF) = process(df)
+      val (genderCountDF, satisfactionCountDF, satisfactionByClassDF, typeTravelCountDF, ageDistDF, loyalCustomerCountByAgeDF) = process(df)
 //      val satisfactionByFeatureDF = satisfaction_by_feature_process(df)
 
 //      println(loyalCustomerCount.show(10, truncate = false))
@@ -85,7 +85,14 @@ object Consumer extends SparkSessionTrait {
         }
         .start()
 
-      val query5 = loyalCustomerCountByAgeDF.writeStream
+//      val query5 = satisfactionCountDF.writeStream
+//        .outputMode("update")
+//        .foreachBatch { (batchDF: DataFrame, batchId: Long) =>
+//          kpiLoyalCustomerCount(batchDF)
+//        }
+//        .start()
+
+      val query6 = loyalCustomerCountByAgeDF.writeStream
         .outputMode("update")
         .foreachBatch { (batchDF: DataFrame, batchId: Long) =>
           kpiLoyalCustomerCount(batchDF)
@@ -96,6 +103,9 @@ object Consumer extends SparkSessionTrait {
       query2.awaitTermination()
       query3.awaitTermination()
       query4.awaitTermination()
+//      query5.awaitTermination()
+      query6.awaitTermination()
+
 
     } finally {
       spark.stop()
@@ -114,13 +124,11 @@ object Consumer extends SparkSessionTrait {
   })
 
   // Function to process the data and return DataFrames for both KPIs
-  def process(df: DataFrame): (DataFrame, DataFrame, DataFrame, DataFrame, DataFrame) = {
+  def process(df: DataFrame): (DataFrame, DataFrame, DataFrame, DataFrame, DataFrame, DataFrame) = {
     // KPI 1: Count of records for each Gender
     val genderCountDF = df.groupBy(col("Gender")).count()
 
-    val satisfactionCountDF = df.withColumn("satisfactionNumeric", satisfactionToNumeric(col("satisfaction")))
-      .groupBy(col("satisfactionNumeric"))
-      .count()
+    val satisfactionCountDF = df.groupBy(col("satisfaction")).count()
 
     val satisfactionByClassDF = df.groupBy(col("Class"), col("satisfaction")).count()
 
@@ -132,19 +140,19 @@ object Consumer extends SparkSessionTrait {
       .withColumn("LoyalNumeric", loyalToNumeric(col("Customer Type")))
       .groupBy(col("Age"))
       .agg(
-        sum("LoyalNumeric").alias("Loyal Customer Count"),
-       ( count("Customer Type") - sum("LoyalNumeric")).alias("Disloyal Customer Count")
+        sum("LoyalNumeric").cast(IntegerType).as("Loyal_Customer_Count"),
+        (count("Customer Type") - sum("LoyalNumeric")).cast(IntegerType).as("Disloyal_Customer_Count")
       )
 
 //    (genderCountDF, satisfactionByClassDF, impactOfFlightDistanceDF, loyalCustomerCountByAgeDF, ageDistDF, satisfactionByTravelTypeDF)
-    (genderCountDF, satisfactionCountDF, typeTravelCountDF, ageDistDF, loyalCustomerCountByAgeDF)
+    (genderCountDF, satisfactionCountDF, satisfactionByClassDF, typeTravelCountDF, ageDistDF, loyalCustomerCountByAgeDF)
   }
 
   // Function to handle insertion into the gender_counts table
   def kpi1(batchDF: DataFrame): Unit = {
     // Connect to the database
-    batchDF.show(5)
-    batchDF.printSchema()
+//    batchDF.show(5)
+//    batchDF.printSchema()
     batchDF.foreachPartition { partition: Iterator[Row] =>
       val conn: Connection = DriverManager.getConnection(jdbcUrl, username, password)
       try {
@@ -236,6 +244,35 @@ object Consumer extends SparkSessionTrait {
     }
   }
 
+  def kpiStatisfactionCount(batchDF: DataFrame): Unit = {
+    // Connect to the database
+    batchDF.foreachPartition { partition: Iterator[Row] =>
+      val conn: Connection = DriverManager.getConnection(jdbcUrl, username, password)
+      try {
+        val upsertStatement: PreparedStatement = conn.prepareStatement(
+          """
+            |INSERT INTO satisfaction_counts (satisfaction, Count)
+            |VALUES (?, ?)
+            |ON DUPLICATE KEY UPDATE
+            |Count = VALUES(Count)
+            """.stripMargin
+        )
+        try {
+          // Process each row in the partition
+          partition.foreach { row =>
+            upsertStatement.setString(1, row.getAs[String]("satisfaction"))
+            upsertStatement.setLong(2, row.getAs[Long]("count"))
+            upsertStatement.executeUpdate()
+          }
+        } finally {
+          upsertStatement.close()
+        }
+      } finally {
+        conn.close()
+      }
+    }
+  }
+
   def kpi4(batchDF: DataFrame):Unit = {
 //    batchDF.show(5)
 //    batchDF.printSchema()
@@ -315,8 +352,8 @@ object Consumer extends SparkSessionTrait {
           // Process each row in the partition
           partition.foreach { row =>
             upsertStatement.setInt(1, row.getAs[Int]("Age"))
-            upsertStatement.setInt(2, row.getAs[Int]("Loyal Customer Count"))
-            upsertStatement.setInt(3, row.getAs[Int]("Disloyal Customer Count"))
+            upsertStatement.setInt(2, row.getAs[Int]("Loyal_Customer_Count"))
+            upsertStatement.setInt(3, row.getAs[Int]("Disloyal_Customer_Count"))
             upsertStatement.executeUpdate()
           }
         } finally {
